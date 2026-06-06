@@ -5,113 +5,192 @@
 
 const char kWindowTitle[] = "GC2C_02_ゴ_チュウ";
 
-// 3次元ベクトル
-struct Vector3 {
-	float x;
-	float y;
-	float z;
+// 4x4行列
+struct Matrix4x4 {
+	float m[4][4];
 };
 
-// 加算
-Vector3 Add(const Vector3& v1, const Vector3& v2) {
-	Vector3 result{};
+// 行列の加法
+Matrix4x4 Add(const Matrix4x4& m1, const Matrix4x4& m2) {
+	Matrix4x4 result{};
 
-	result.x = v1.x + v2.x;
-	result.y = v1.y + v2.y;
-	result.z = v1.z + v2.z;
-
-	return result;
-}
-
-// 減算
-Vector3 Subtract(const Vector3& v1, const Vector3& v2) {
-	Vector3 result{};
-
-	result.x = v1.x - v2.x;
-	result.y = v1.y - v2.y;
-	result.z = v1.z - v2.z;
-
-	return result;
-}
-
-// スカラー倍
-Vector3 Multiply(float scalar, const Vector3& v) {
-	Vector3 result{};
-
-	result.x = scalar * v.x;
-	result.y = scalar * v.y;
-	result.z = scalar * v.z;
-
-	return result;
-}
-
-// 内積
-float Dot(const Vector3& v1, const Vector3& v2) {
-	float result = 0.0f;
-
-	result = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
-
-	return result;
-}
-
-// 長さ
-float Length(const Vector3& v) {
-	float result = 0.0f;
-
-	result = sqrtf(Dot(v, v));
-
-	return result;
-}
-
-// 正規化
-Vector3 Normalize(const Vector3& v) {
-	Vector3 result{};
-
-	float length = Length(v);
-
-	if (length != 0.0f) {
-		result.x = v.x / length;
-		result.y = v.y / length;
-		result.z = v.z / length;
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			result.m[row][column] = m1.m[row][column] + m2.m[row][column];
+		}
 	}
 
 	return result;
 }
 
-// Vector3の値を画面に表示
-void VectorScreenPrintf(int x, int y, const Vector3& vector, const char* label) {
+// 行列の減法
+Matrix4x4 Subtract(const Matrix4x4& m1, const Matrix4x4& m2) {
+	Matrix4x4 result{};
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			result.m[row][column] = m1.m[row][column] - m2.m[row][column];
+		}
+	}
+
+	return result;
+}
+
+// 行列の積
+Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2) {
+	Matrix4x4 result{};
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			for (int i = 0; i < 4; i++) {
+				result.m[row][column] += m1.m[row][i] * m2.m[i][column];
+			}
+		}
+	}
+
+	return result;
+}
+
+// 単位行列の作成
+Matrix4x4 MakeIdentity4x4() {
+	Matrix4x4 result{};
+
+	for (int i = 0; i < 4; i++) {
+		result.m[i][i] = 1.0f;
+	}
+
+	return result;
+}
+
+// 転置行列
+Matrix4x4 Transpose(const Matrix4x4& m) {
+	Matrix4x4 result{};
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			result.m[row][column] = m.m[column][row];
+		}
+	}
+
+	return result;
+}
+
+// 逆行列
+Matrix4x4 Inverse(const Matrix4x4& m) {
+	Matrix4x4 result = MakeIdentity4x4();
+
+	float temp[4][8]{};
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			temp[row][column] = m.m[row][column];
+		}
+
+		for (int column = 0; column < 4; column++) {
+			temp[row][column + 4] = result.m[row][column];
+		}
+	}
+
+	for (int i = 0; i < 4; i++) {
+
+		int pivotRow = i;
+
+		for (int row = i + 1; row < 4; row++) {
+			if (fabsf(temp[row][i]) > fabsf(temp[pivotRow][i])) {
+				pivotRow = row;
+			}
+		}
+
+		if (pivotRow != i) {
+			for (int column = 0; column < 8; column++) {
+				float swap = temp[i][column];
+				temp[i][column] = temp[pivotRow][column];
+				temp[pivotRow][column] = swap;
+			}
+		}
+
+		float pivot = temp[i][i];
+
+		if (pivot == 0.0f) {
+			return Matrix4x4{};
+		}
+
+		for (int column = 0; column < 8; column++) {
+			temp[i][column] /= pivot;
+		}
+
+		for (int row = 0; row < 4; row++) {
+			if (row != i) {
+				float factor = temp[row][i];
+
+				for (int column = 0; column < 8; column++) {
+					temp[row][column] -= factor * temp[i][column];
+				}
+			}
+		}
+	}
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			result.m[row][column] = temp[row][column + 4];
+		}
+	}
+
+	return result;
+}
+
+// 4x4行列の値を画面に表示
+void MatrixScreenPrintf(int x, int y, const Matrix4x4& matrix, const char* label) {
+	static const int kRowHeight = 20;
 	static const int kColumnWidth = 60;
 
-	Novice::ScreenPrintf(x, y, "%.02f", vector.x);
-	Novice::ScreenPrintf(x + kColumnWidth, y, "%.02f", vector.y);
-	Novice::ScreenPrintf(x + kColumnWidth * 2, y, "%.02f", vector.z);
-	Novice::ScreenPrintf(x + kColumnWidth * 3, y, "%s", label);
+	Novice::ScreenPrintf(x, y, "%s", label);
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			Novice::ScreenPrintf(
+				x + column * kColumnWidth,
+				y + (row + 1) * kRowHeight,
+				"%6.02f",
+				matrix.m[row][column]
+			);
+		}
+	}
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
-	// Novice初期化
 	Novice::Initialize(kWindowTitle, 1280, 720);
 
 	char keys[256] = { 0 };
 	char preKeys[256] = { 0 };
 
 	const int kRowHeight = 20;
+	const int kColumnWidth = 60;
 
-	Vector3 v1{ 1.0f, 3.0f, -5.0f };
-	Vector3 v2{ 4.0f, -1.0f, 2.0f };
+	Matrix4x4 m1 = {
+		3.2f, 0.7f, 9.6f, 4.4f,
+		5.5f, 1.3f, 7.8f, 2.1f,
+		6.9f, 8.0f, 2.6f, 1.0f,
+		0.5f, 7.2f, 5.1f, 3.3f
+	};
 
-	float k = 4.0f;
+	Matrix4x4 m2 = {
+		4.1f, 6.5f, 3.3f, 2.2f,
+		8.8f, 0.6f, 9.9f, 7.7f,
+		1.1f, 5.5f, 6.6f, 0.0f,
+		3.3f, 9.9f, 8.8f, 2.2f
+	};
 
-	// 各演算結果
-	Vector3 resultAdd = Add(v1, v2);
-	Vector3 resultSubtract = Subtract(v1, v2);
-	Vector3 resultMultiply = Multiply(k, v1);
-	float resultDot = Dot(v1, v2);
-	float resultLength = Length(v1);
-	Vector3 resultNormalize = Normalize(v2);
+	Matrix4x4 resultAdd = Add(m1, m2);
+	Matrix4x4 resultSubtract = Subtract(m1, m2);
+	Matrix4x4 resultMultiply = Multiply(m1, m2);
+	Matrix4x4 inverseM1 = Inverse(m1);
+	Matrix4x4 inverseM2 = Inverse(m2);
+	Matrix4x4 transposeM1 = Transpose(m1);
+	Matrix4x4 transposeM2 = Transpose(m2);
+	Matrix4x4 identity = MakeIdentity4x4();
 
-	// メインループ
 	while (Novice::ProcessMessage() == 0) {
 
 		Novice::BeginFrame();
@@ -119,15 +198,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		memcpy(preKeys, keys, 256);
 		Novice::GetHitKeyStateAll(keys);
 
-		// 演算結果を表示
-		VectorScreenPrintf(0, 0, resultAdd, " : Add");
-		VectorScreenPrintf(0, kRowHeight, resultSubtract, " : Subtract");
-		VectorScreenPrintf(0, kRowHeight * 2, resultMultiply, " : Multiply");
-		Novice::ScreenPrintf(0, kRowHeight * 3, "%.02f : Dot", resultDot);
-		Novice::ScreenPrintf(0, kRowHeight * 4, "%.02f : Length", resultLength);
-		VectorScreenPrintf(0, kRowHeight * 5, resultNormalize, " : Normalize");
+		MatrixScreenPrintf(0, 0, resultAdd, "Add");
+		MatrixScreenPrintf(0, kRowHeight * 5, resultSubtract, "Subtract");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 2, resultMultiply, "Multiply");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 3, inverseM1, "inverseM1");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 4, inverseM2, "inverseM2");
 
-		// ESCで終了
+		MatrixScreenPrintf(kColumnWidth * 7, 0, transposeM1, "transposeM1");
+		MatrixScreenPrintf(kColumnWidth * 7, kRowHeight * 5, transposeM2, "transposeM2");
+		MatrixScreenPrintf(kColumnWidth * 7, kRowHeight * 5 * 2, identity, "identity");
+
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
 		}
