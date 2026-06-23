@@ -17,16 +17,6 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-// 3次元ベクトルの値を画面に表示
-void VectorScreenPrintf(int x, int y, const Vector3& vector, const char* label) {
-	static const int kColumnWidth = 60;
-
-	Novice::ScreenPrintf(x, y, "%.02f", vector.x);
-	Novice::ScreenPrintf(x + kColumnWidth, y, "%.02f", vector.y);
-	Novice::ScreenPrintf(x + kColumnWidth * 2, y, "%.02f", vector.z);
-	Novice::ScreenPrintf(x + kColumnWidth * 3, y, "%s", label);
-}
-
 // 4x4行列の値を画面に表示
 void MatrixScreenPrintf(int x, int y, const Matrix4x4& matrix, const char* label) {
 	static const int kRowHeight = 20;
@@ -45,9 +35,27 @@ void MatrixScreenPrintf(int x, int y, const Matrix4x4& matrix, const char* label
 	}
 }
 
-// 平行移動行列
-Matrix4x4 MakeTranslateMatrix(const Vector3& translate) {
+// 行列の積
+Matrix4x4 Multiply(const Matrix4x4& matrix1, const Matrix4x4& matrix2) {
 	Matrix4x4 result{};
+
+	for (int row = 0; row < 4; row++) {
+		for (int column = 0; column < 4; column++) {
+			for (int i = 0; i < 4; i++) {
+				result.m[row][column] += matrix1.m[row][i] * matrix2.m[i][column];
+			}
+		}
+	}
+
+	return result;
+}
+
+// X軸回転行列
+Matrix4x4 MakeRotateXMatrix(float radian) {
+	Matrix4x4 result{};
+
+	float sin = std::sin(radian);
+	float cos = std::cos(radian);
 
 	result.m[0][0] = 1.0f;
 	result.m[0][1] = 0.0f;
@@ -55,40 +63,13 @@ Matrix4x4 MakeTranslateMatrix(const Vector3& translate) {
 	result.m[0][3] = 0.0f;
 
 	result.m[1][0] = 0.0f;
-	result.m[1][1] = 1.0f;
-	result.m[1][2] = 0.0f;
+	result.m[1][1] = cos;
+	result.m[1][2] = sin;
 	result.m[1][3] = 0.0f;
 
 	result.m[2][0] = 0.0f;
-	result.m[2][1] = 0.0f;
-	result.m[2][2] = 1.0f;
-	result.m[2][3] = 0.0f;
-
-	result.m[3][0] = translate.x;
-	result.m[3][1] = translate.y;
-	result.m[3][2] = translate.z;
-	result.m[3][3] = 1.0f;
-
-	return result;
-}
-
-// 拡大縮小行列
-Matrix4x4 MakeScaleMatrix(const Vector3& scale) {
-	Matrix4x4 result{};
-
-	result.m[0][0] = scale.x;
-	result.m[0][1] = 0.0f;
-	result.m[0][2] = 0.0f;
-	result.m[0][3] = 0.0f;
-
-	result.m[1][0] = 0.0f;
-	result.m[1][1] = scale.y;
-	result.m[1][2] = 0.0f;
-	result.m[1][3] = 0.0f;
-
-	result.m[2][0] = 0.0f;
-	result.m[2][1] = 0.0f;
-	result.m[2][2] = scale.z;
+	result.m[2][1] = -sin;
+	result.m[2][2] = cos;
 	result.m[2][3] = 0.0f;
 
 	result.m[3][0] = 0.0f;
@@ -99,22 +80,62 @@ Matrix4x4 MakeScaleMatrix(const Vector3& scale) {
 	return result;
 }
 
-// 座標変換
-Vector3 Transform(const Vector3& vector, const Matrix4x4& matrix) {
-	Vector3 result{};
+// Y軸回転行列
+Matrix4x4 MakeRotateYMatrix(float radian) {
+	Matrix4x4 result{};
 
-	float w = 0.0f;
+	float sin = std::sin(radian);
+	float cos = std::cos(radian);
 
-	result.x = vector.x * matrix.m[0][0] + vector.y * matrix.m[1][0] + vector.z * matrix.m[2][0] + matrix.m[3][0];
-	result.y = vector.x * matrix.m[0][1] + vector.y * matrix.m[1][1] + vector.z * matrix.m[2][1] + matrix.m[3][1];
-	result.z = vector.x * matrix.m[0][2] + vector.y * matrix.m[1][2] + vector.z * matrix.m[2][2] + matrix.m[3][2];
-	w = vector.x * matrix.m[0][3] + vector.y * matrix.m[1][3] + vector.z * matrix.m[2][3] + matrix.m[3][3];
+	result.m[0][0] = cos;
+	result.m[0][1] = 0.0f;
+	result.m[0][2] = -sin;
+	result.m[0][3] = 0.0f;
 
-	if (w != 0.0f) {
-		result.x /= w;
-		result.y /= w;
-		result.z /= w;
-	}
+	result.m[1][0] = 0.0f;
+	result.m[1][1] = 1.0f;
+	result.m[1][2] = 0.0f;
+	result.m[1][3] = 0.0f;
+
+	result.m[2][0] = sin;
+	result.m[2][1] = 0.0f;
+	result.m[2][2] = cos;
+	result.m[2][3] = 0.0f;
+
+	result.m[3][0] = 0.0f;
+	result.m[3][1] = 0.0f;
+	result.m[3][2] = 0.0f;
+	result.m[3][3] = 1.0f;
+
+	return result;
+}
+
+// Z軸回転行列
+Matrix4x4 MakeRotateZMatrix(float radian) {
+	Matrix4x4 result{};
+
+	float sin = std::sin(radian);
+	float cos = std::cos(radian);
+
+	result.m[0][0] = cos;
+	result.m[0][1] = sin;
+	result.m[0][2] = 0.0f;
+	result.m[0][3] = 0.0f;
+
+	result.m[1][0] = -sin;
+	result.m[1][1] = cos;
+	result.m[1][2] = 0.0f;
+	result.m[1][3] = 0.0f;
+
+	result.m[2][0] = 0.0f;
+	result.m[2][1] = 0.0f;
+	result.m[2][2] = 1.0f;
+	result.m[2][3] = 0.0f;
+
+	result.m[3][0] = 0.0f;
+	result.m[3][1] = 0.0f;
+	result.m[3][2] = 0.0f;
+	result.m[3][3] = 1.0f;
 
 	return result;
 }
@@ -128,21 +149,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	const int kRowHeight = 20;
 
-	Vector3 translate{ 4.1f, 2.6f, 0.8f };
-	Vector3 scale{ 1.5f, 5.2f, 7.3f };
-	Vector3 point{ 2.3f, 3.8f, 1.4f };
+	Vector3 rotate{ 0.4f, 1.43f, -0.8f };
 
-	Matrix4x4 translateMatrix = MakeTranslateMatrix(translate);
-	Matrix4x4 scaleMatrix = MakeScaleMatrix(scale);
-
-	Matrix4x4 transformMatrix = {
-		1.0f, 2.0f, 3.0f, 4.0f,
-		3.0f, 1.0f, 1.0f, 2.0f,
-		1.0f, 4.0f, 2.0f, 3.0f,
-		2.0f, 2.0f, 1.0f, 3.0f,
-	};
-
-	Vector3 transformed = Transform(point, transformMatrix);
+	Matrix4x4 rotateXMatrix = MakeRotateXMatrix(rotate.x);
+	Matrix4x4 rotateYMatrix = MakeRotateYMatrix(rotate.y);
+	Matrix4x4 rotateZMatrix = MakeRotateZMatrix(rotate.z);
+	Matrix4x4 rotateXYZMatrix = Multiply(rotateXMatrix, Multiply(rotateYMatrix, rotateZMatrix));
 
 	while (Novice::ProcessMessage() == 0) {
 
@@ -151,9 +163,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		memcpy(preKeys, keys, 256);
 		Novice::GetHitKeyStateAll(keys);
 
-		VectorScreenPrintf(0, 0, transformed, "transformed");
-		MatrixScreenPrintf(0, kRowHeight, translateMatrix, "translateMatrix");
-		MatrixScreenPrintf(0, kRowHeight * 6, scaleMatrix, "scaleMatrix");
+		MatrixScreenPrintf(0, 0, rotateXMatrix, "rotateXMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5, rotateYMatrix, "rotateYMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 2, rotateZMatrix, "rotateZMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 3, rotateXYZMatrix, "rotateXYZMatrix");
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
