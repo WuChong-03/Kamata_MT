@@ -5,13 +5,6 @@
 
 const char kWindowTitle[] = "GC2C_02_ゴ_チュウ";
 
-// 3次元ベクトル
-struct Vector3 {
-	float x;
-	float y;
-	float z;
-};
-
 // 4x4行列
 struct Matrix4x4 {
 	float m[4][4];
@@ -35,176 +28,87 @@ void MatrixScreenPrintf(int x, int y, const Matrix4x4& matrix, const char* label
 	}
 }
 
-// 行列の積
-Matrix4x4 Multiply(const Matrix4x4& matrix1, const Matrix4x4& matrix2) {
+// 透視投影行列
+Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip) {
 	Matrix4x4 result{};
 
-	for (int row = 0; row < 4; row++) {
-		for (int column = 0; column < 4; column++) {
-			for (int i = 0; i < 4; i++) {
-				result.m[row][column] += matrix1.m[row][i] * matrix2.m[i][column];
-			}
-		}
-	}
+	float cot = 1.0f / std::tan(fovY / 2.0f);
 
-	return result;
-}
-
-// 拡大縮小行列
-Matrix4x4 MakeScaleMatrix(const Vector3& scale) {
-	Matrix4x4 result{};
-
-	result.m[0][0] = scale.x;
+	result.m[0][0] = cot / aspectRatio;
 	result.m[0][1] = 0.0f;
 	result.m[0][2] = 0.0f;
 	result.m[0][3] = 0.0f;
 
 	result.m[1][0] = 0.0f;
-	result.m[1][1] = scale.y;
+	result.m[1][1] = cot;
 	result.m[1][2] = 0.0f;
 	result.m[1][3] = 0.0f;
 
 	result.m[2][0] = 0.0f;
 	result.m[2][1] = 0.0f;
-	result.m[2][2] = scale.z;
-	result.m[2][3] = 0.0f;
+	result.m[2][2] = farClip / (farClip - nearClip);
+	result.m[2][3] = 1.0f;
 
 	result.m[3][0] = 0.0f;
 	result.m[3][1] = 0.0f;
-	result.m[3][2] = 0.0f;
-	result.m[3][3] = 1.0f;
+	result.m[3][2] = (-nearClip * farClip) / (farClip - nearClip);
+	result.m[3][3] = 0.0f;
 
 	return result;
 }
 
-// 平行移動行列
-Matrix4x4 MakeTranslateMatrix(const Vector3& translate) {
+// 正射影行列
+Matrix4x4 MakeOrthographicMatrix(float left, float top, float right, float bottom, float nearClip, float farClip) {
 	Matrix4x4 result{};
 
-	result.m[0][0] = 1.0f;
+	result.m[0][0] = 2.0f / (right - left);
 	result.m[0][1] = 0.0f;
 	result.m[0][2] = 0.0f;
 	result.m[0][3] = 0.0f;
 
 	result.m[1][0] = 0.0f;
-	result.m[1][1] = 1.0f;
+	result.m[1][1] = 2.0f / (top - bottom);
 	result.m[1][2] = 0.0f;
 	result.m[1][3] = 0.0f;
 
 	result.m[2][0] = 0.0f;
 	result.m[2][1] = 0.0f;
-	result.m[2][2] = 1.0f;
+	result.m[2][2] = 1.0f / (farClip - nearClip);
 	result.m[2][3] = 0.0f;
 
-	result.m[3][0] = translate.x;
-	result.m[3][1] = translate.y;
-	result.m[3][2] = translate.z;
+	result.m[3][0] = (left + right) / (left - right);
+	result.m[3][1] = (top + bottom) / (bottom - top);
+	result.m[3][2] = nearClip / (nearClip - farClip);
 	result.m[3][3] = 1.0f;
 
 	return result;
 }
 
-// X軸回転行列
-Matrix4x4 MakeRotateXMatrix(float radian) {
+// ビューポート変換行列
+Matrix4x4 MakeViewportMatrix(float left, float top, float width, float height, float minDepth, float maxDepth) {
 	Matrix4x4 result{};
 
-	float sin = std::sin(radian);
-	float cos = std::cos(radian);
-
-	result.m[0][0] = 1.0f;
+	result.m[0][0] = width / 2.0f;
 	result.m[0][1] = 0.0f;
 	result.m[0][2] = 0.0f;
 	result.m[0][3] = 0.0f;
 
 	result.m[1][0] = 0.0f;
-	result.m[1][1] = cos;
-	result.m[1][2] = sin;
-	result.m[1][3] = 0.0f;
-
-	result.m[2][0] = 0.0f;
-	result.m[2][1] = -sin;
-	result.m[2][2] = cos;
-	result.m[2][3] = 0.0f;
-
-	result.m[3][0] = 0.0f;
-	result.m[3][1] = 0.0f;
-	result.m[3][2] = 0.0f;
-	result.m[3][3] = 1.0f;
-
-	return result;
-}
-
-// Y軸回転行列
-Matrix4x4 MakeRotateYMatrix(float radian) {
-	Matrix4x4 result{};
-
-	float sin = std::sin(radian);
-	float cos = std::cos(radian);
-
-	result.m[0][0] = cos;
-	result.m[0][1] = 0.0f;
-	result.m[0][2] = -sin;
-	result.m[0][3] = 0.0f;
-
-	result.m[1][0] = 0.0f;
-	result.m[1][1] = 1.0f;
-	result.m[1][2] = 0.0f;
-	result.m[1][3] = 0.0f;
-
-	result.m[2][0] = sin;
-	result.m[2][1] = 0.0f;
-	result.m[2][2] = cos;
-	result.m[2][3] = 0.0f;
-
-	result.m[3][0] = 0.0f;
-	result.m[3][1] = 0.0f;
-	result.m[3][2] = 0.0f;
-	result.m[3][3] = 1.0f;
-
-	return result;
-}
-
-// Z軸回転行列
-Matrix4x4 MakeRotateZMatrix(float radian) {
-	Matrix4x4 result{};
-
-	float sin = std::sin(radian);
-	float cos = std::cos(radian);
-
-	result.m[0][0] = cos;
-	result.m[0][1] = sin;
-	result.m[0][2] = 0.0f;
-	result.m[0][3] = 0.0f;
-
-	result.m[1][0] = -sin;
-	result.m[1][1] = cos;
+	result.m[1][1] = -height / 2.0f;
 	result.m[1][2] = 0.0f;
 	result.m[1][3] = 0.0f;
 
 	result.m[2][0] = 0.0f;
 	result.m[2][1] = 0.0f;
-	result.m[2][2] = 1.0f;
+	result.m[2][2] = maxDepth - minDepth;
 	result.m[2][3] = 0.0f;
 
-	result.m[3][0] = 0.0f;
-	result.m[3][1] = 0.0f;
-	result.m[3][2] = 0.0f;
+	result.m[3][0] = left + width / 2.0f;
+	result.m[3][1] = top + height / 2.0f;
+	result.m[3][2] = minDepth;
 	result.m[3][3] = 1.0f;
 
 	return result;
-}
-
-// 3次元アフィン変換行列
-Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Vector3& translate) {
-	Matrix4x4 scaleMatrix = MakeScaleMatrix(scale);
-	Matrix4x4 rotateXMatrix = MakeRotateXMatrix(rotate.x);
-	Matrix4x4 rotateYMatrix = MakeRotateYMatrix(rotate.y);
-	Matrix4x4 rotateZMatrix = MakeRotateZMatrix(rotate.z);
-	Matrix4x4 translateMatrix = MakeTranslateMatrix(translate);
-
-	Matrix4x4 rotateMatrix = Multiply(rotateXMatrix, Multiply(rotateYMatrix, rotateZMatrix));
-
-	return Multiply(Multiply(scaleMatrix, rotateMatrix), translateMatrix);
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -214,11 +118,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	char keys[256] = { 0 };
 	char preKeys[256] = { 0 };
 
-	Vector3 scale{ 1.2f, 0.79f, -2.1f };
-	Vector3 rotate{ 0.4f, 1.43f, -0.8f };
-	Vector3 translate{ 2.7f, -4.15f, 1.57f };
+	const int kRowHeight = 20;
 
-	Matrix4x4 worldMatrix = MakeAffineMatrix(scale, rotate, translate);
+	Matrix4x4 orthographicMatrix =
+		MakeOrthographicMatrix(-160.0f, 160.0f, 200.0f, 300.0f, 0.0f, 1000.0f);
+	Matrix4x4 perspectiveFovMatrix =
+		MakePerspectiveFovMatrix(0.63f, 1.33f, 0.1f, 1000.0f);
+	Matrix4x4 viewportMatrix =
+		MakeViewportMatrix(100.0f, 200.0f, 600.0f, 300.0f, 0.0f, 1.0f);
 
 	while (Novice::ProcessMessage() == 0) {
 
@@ -227,7 +134,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		memcpy(preKeys, keys, 256);
 		Novice::GetHitKeyStateAll(keys);
 
-		MatrixScreenPrintf(0, 0, worldMatrix, "worldMatrix");
+		MatrixScreenPrintf(0, 0, orthographicMatrix, "orthographicMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5, perspectiveFovMatrix, "perspectiveFovMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 10, viewportMatrix, "viewportMatrix");
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
