@@ -28,10 +28,9 @@ struct Segment {
 	Vector3 diff;
 };
 
-// 平面
-struct Plane {
-	Vector3 normal;
-	float distance;
+// 三角形
+struct Triangle {
+	Vector3 vertices[3];
 };
 
 // 加算
@@ -99,26 +98,43 @@ Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	return result;
 }
 
-// 垂直なベクトル
-Vector3 Perpendicular(const Vector3& vector) {
-	if (vector.x != 0.0f || vector.y != 0.0f) {
-		return { -vector.y, vector.x, 0.0f };
+// 三角形と線分の衝突判定
+bool IsCollision(const Triangle& triangle, const Segment& segment) {
+	Vector3 v01 = Subtract(triangle.vertices[1], triangle.vertices[0]);
+	Vector3 v12 = Subtract(triangle.vertices[2], triangle.vertices[1]);
+	Vector3 v20 = Subtract(triangle.vertices[0], triangle.vertices[2]);
+	Vector3 normal = Normalize(Cross(v01, v12));
+
+	if (Length(normal) == 0.0f) {
+		return false;
 	}
 
-	return { 0.0f, -vector.z, vector.y };
-}
-
-// 線分と平面の衝突判定
-bool IsCollision(const Segment& segment, const Plane& plane) {
-	float dot = Dot(plane.normal, segment.diff);
+	float distance = Dot(triangle.vertices[0], normal);
+	float dot = Dot(normal, segment.diff);
 
 	if (dot == 0.0f) {
 		return false;
 	}
 
-	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
+	float t = (distance - Dot(segment.origin, normal)) / dot;
 
-	return 0.0f <= t && t <= 1.0f;
+	if (t < 0.0f || 1.0f < t) {
+		return false;
+	}
+
+	Vector3 point = Add(segment.origin, Multiply(t, segment.diff));
+
+	Vector3 v0p = Subtract(point, triangle.vertices[0]);
+	Vector3 v1p = Subtract(point, triangle.vertices[1]);
+	Vector3 v2p = Subtract(point, triangle.vertices[2]);
+
+	Vector3 cross01 = Cross(v01, v0p);
+	Vector3 cross12 = Cross(v12, v1p);
+	Vector3 cross20 = Cross(v20, v2p);
+
+	return Dot(cross01, normal) >= 0.0f &&
+		Dot(cross12, normal) >= 0.0f &&
+		Dot(cross20, normal) >= 0.0f;
 }
 
 // 行列の積
@@ -435,35 +451,28 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
-// Planeの描画
-void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 center = Multiply(plane.distance, plane.normal);
-
-	Vector3 perpendiculars[4]{};
-	perpendiculars[0] = Normalize(Perpendicular(plane.normal));
-	perpendiculars[1] = { -perpendiculars[0].x, -perpendiculars[0].y, -perpendiculars[0].z };
-	perpendiculars[2] = Normalize(Cross(plane.normal, perpendiculars[0]));
-	perpendiculars[3] = { -perpendiculars[2].x, -perpendiculars[2].y, -perpendiculars[2].z };
-
-	Vector3 points[4]{};
-	for (int32_t index = 0; index < 4; ++index) {
-		Vector3 extend = Multiply(2.0f, perpendiculars[index]);
-		Vector3 point = Add(center, extend);
-		points[index] = Transform(Transform(point, viewProjectionMatrix), viewportMatrix);
-	}
-
-	Novice::DrawLine(int(points[0].x), int(points[0].y), int(points[2].x), int(points[2].y), color);
-	Novice::DrawLine(int(points[2].x), int(points[2].y), int(points[1].x), int(points[1].y), color);
-	Novice::DrawLine(int(points[1].x), int(points[1].y), int(points[3].x), int(points[3].y), color);
-	Novice::DrawLine(int(points[3].x), int(points[3].y), int(points[0].x), int(points[0].y), color);
-}
-
 // Segmentの描画
 void DrawSegment(const Segment& segment, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
 	Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 	Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
 
 	Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), color);
+}
+
+// Triangleの描画
+void DrawTriangle(const Triangle& triangle, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	Vector3 vertices[3]{};
+
+	for (int32_t index = 0; index < 3; ++index) {
+		vertices[index] = Transform(Transform(triangle.vertices[index], viewProjectionMatrix), viewportMatrix);
+	}
+
+	Novice::DrawTriangle(
+		int(vertices[0].x), int(vertices[0].y),
+		int(vertices[1].x), int(vertices[1].y),
+		int(vertices[2].x), int(vertices[2].y),
+		color,
+		kFillModeWireFrame);
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -476,8 +485,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate{ 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate{ 0.26f, 0.0f, 0.0f };
 
-	Plane plane{ { 0.0f, 1.0f, 0.0f }, 1.0f };
-	Segment segment{ { -0.45f, 0.33f, 0.0f }, { 1.0f, 0.58f, 0.0f } };
+	Triangle triangle{ {
+		{ -1.0f, 0.0f, 0.0f },
+		{ 0.0f, 1.0f, 0.0f },
+		{ 1.0f, 0.0f, 0.0f },
+	} };
+	Segment segment{ { 0.0f, 0.42f, -1.0f }, { 0.0f, 0.5f, 2.0f } };
 
 	while (Novice::ProcessMessage() == 0) {
 
@@ -486,6 +499,41 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		memcpy(preKeys, keys, 256);
 		Novice::GetHitKeyStateAll(keys);
 
+		const float kCameraMoveSpeed = 0.05f;
+		const float kCameraRotateSpeed = 0.02f;
+
+		if (keys[DIK_W]) {
+			cameraTranslate.z += kCameraMoveSpeed;
+		}
+		if (keys[DIK_S]) {
+			cameraTranslate.z -= kCameraMoveSpeed;
+		}
+		if (keys[DIK_A]) {
+			cameraTranslate.x -= kCameraMoveSpeed;
+		}
+		if (keys[DIK_D]) {
+			cameraTranslate.x += kCameraMoveSpeed;
+		}
+		if (keys[DIK_Q]) {
+			cameraTranslate.y -= kCameraMoveSpeed;
+		}
+		if (keys[DIK_E]) {
+			cameraTranslate.y += kCameraMoveSpeed;
+		}
+
+		if (keys[DIK_LEFT]) {
+			cameraRotate.y -= kCameraRotateSpeed;
+		}
+		if (keys[DIK_RIGHT]) {
+			cameraRotate.y += kCameraRotateSpeed;
+		}
+		if (keys[DIK_UP]) {
+			cameraRotate.x -= kCameraRotateSpeed;
+		}
+		if (keys[DIK_DOWN]) {
+			cameraRotate.x += kCameraRotateSpeed;
+		}
+
 		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1.0f, 1.0f, 1.0f }, cameraRotate, cameraTranslate);
 		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
 		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
@@ -493,23 +541,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("Plane.Normal", &plane.normal.x, 0.01f);
-		ImGui::DragFloat("Plane.Distance", &plane.distance, 0.01f);
+		ImGui::DragFloat3("Triangle.v0", &triangle.vertices[0].x, 0.01f);
+		ImGui::DragFloat3("Triangle.v1", &triangle.vertices[1].x, 0.01f);
+		ImGui::DragFloat3("Triangle.v2", &triangle.vertices[2].x, 0.01f);
 		ImGui::DragFloat3("Segment.Origin", &segment.origin.x, 0.01f);
 		ImGui::DragFloat3("Segment.Diff", &segment.diff.x, 0.01f);
+		ImGui::InputFloat3("Camera.Translate", &cameraTranslate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat3("Camera.Rotate", &cameraRotate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
-		if (Length(plane.normal) == 0.0f) {
-			plane.normal = { 0.0f, 1.0f, 0.0f };
-		}
-		else {
-			plane.normal = Normalize(plane.normal);
-		}
-
-		bool isCollision = IsCollision(segment, plane);
+		bool isCollision = IsCollision(triangle, segment);
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, WHITE);
+		DrawTriangle(triangle, viewProjectionMatrix, viewportMatrix, WHITE);
 		DrawSegment(segment, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
