@@ -22,15 +22,10 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-// 線分
-struct Segment {
-	Vector3 origin;
-	Vector3 diff;
-};
-
-// 三角形
-struct Triangle {
-	Vector3 vertices[3];
+// AABB
+struct AABB {
+	Vector3 min;
+	Vector3 max;
 };
 
 // 加算
@@ -98,43 +93,28 @@ Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	return result;
 }
 
-// 三角形と線分の衝突判定
-bool IsCollision(const Triangle& triangle, const Segment& segment) {
-	Vector3 v01 = Subtract(triangle.vertices[1], triangle.vertices[0]);
-	Vector3 v12 = Subtract(triangle.vertices[2], triangle.vertices[1]);
-	Vector3 v20 = Subtract(triangle.vertices[0], triangle.vertices[2]);
-	Vector3 normal = Normalize(Cross(v01, v12));
+// minとmaxの入れ替わりを直す
+void FixAABB(AABB& aabb) {
+	float minX = aabb.min.x < aabb.max.x ? aabb.min.x : aabb.max.x;
+	float minY = aabb.min.y < aabb.max.y ? aabb.min.y : aabb.max.y;
+	float minZ = aabb.min.z < aabb.max.z ? aabb.min.z : aabb.max.z;
+	float maxX = aabb.min.x > aabb.max.x ? aabb.min.x : aabb.max.x;
+	float maxY = aabb.min.y > aabb.max.y ? aabb.min.y : aabb.max.y;
+	float maxZ = aabb.min.z > aabb.max.z ? aabb.min.z : aabb.max.z;
 
-	if (Length(normal) == 0.0f) {
-		return false;
+	aabb.min = { minX, minY, minZ };
+	aabb.max = { maxX, maxY, maxZ };
+}
+
+// AABB同士の衝突判定
+bool IsCollision(const AABB& aabb1, const AABB& aabb2) {
+	if ((aabb1.min.x <= aabb2.max.x && aabb1.max.x >= aabb2.min.x) &&
+		(aabb1.min.y <= aabb2.max.y && aabb1.max.y >= aabb2.min.y) &&
+		(aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z)) {
+		return true;
 	}
 
-	float distance = Dot(triangle.vertices[0], normal);
-	float dot = Dot(normal, segment.diff);
-
-	if (dot == 0.0f) {
-		return false;
-	}
-
-	float t = (distance - Dot(segment.origin, normal)) / dot;
-
-	if (t < 0.0f || 1.0f < t) {
-		return false;
-	}
-
-	Vector3 point = Add(segment.origin, Multiply(t, segment.diff));
-
-	Vector3 v0p = Subtract(point, triangle.vertices[0]);
-	Vector3 v1p = Subtract(point, triangle.vertices[1]);
-	Vector3 v2p = Subtract(point, triangle.vertices[2]);
-
-	Vector3 cross01 = Cross(v01, v0p);
-	Vector3 cross12 = Cross(v12, v1p);
-	Vector3 cross20 = Cross(v20, v2p);
-
-	return Dot(cross01, normal) >= 0.0f &&
-		Dot(cross12, normal) >= 0.0f &&
-		Dot(cross20, normal) >= 0.0f;
+	return false;
 }
 
 // 行列の積
@@ -451,28 +431,37 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
-// Segmentの描画
-void DrawSegment(const Segment& segment, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
-	Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
+// AABBの描画
+void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	Vector3 vertices[8]{
+		{ aabb.min.x, aabb.min.y, aabb.min.z },
+		{ aabb.max.x, aabb.min.y, aabb.min.z },
+		{ aabb.min.x, aabb.max.y, aabb.min.z },
+		{ aabb.max.x, aabb.max.y, aabb.min.z },
+		{ aabb.min.x, aabb.min.y, aabb.max.z },
+		{ aabb.max.x, aabb.min.y, aabb.max.z },
+		{ aabb.min.x, aabb.max.y, aabb.max.z },
+		{ aabb.max.x, aabb.max.y, aabb.max.z },
+	};
 
-	Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), color);
-}
-
-// Triangleの描画
-void DrawTriangle(const Triangle& triangle, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 vertices[3]{};
-
-	for (int32_t index = 0; index < 3; ++index) {
-		vertices[index] = Transform(Transform(triangle.vertices[index], viewProjectionMatrix), viewportMatrix);
+	for (int32_t index = 0; index < 8; ++index) {
+		vertices[index] = Transform(Transform(vertices[index], viewProjectionMatrix), viewportMatrix);
 	}
 
-	Novice::DrawTriangle(
-		int(vertices[0].x), int(vertices[0].y),
-		int(vertices[1].x), int(vertices[1].y),
-		int(vertices[2].x), int(vertices[2].y),
-		color,
-		kFillModeWireFrame);
+	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[1].x), int(vertices[1].y), color);
+	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[2].x), int(vertices[2].y), color);
+	Novice::DrawLine(int(vertices[1].x), int(vertices[1].y), int(vertices[3].x), int(vertices[3].y), color);
+	Novice::DrawLine(int(vertices[2].x), int(vertices[2].y), int(vertices[3].x), int(vertices[3].y), color);
+
+	Novice::DrawLine(int(vertices[4].x), int(vertices[4].y), int(vertices[5].x), int(vertices[5].y), color);
+	Novice::DrawLine(int(vertices[4].x), int(vertices[4].y), int(vertices[6].x), int(vertices[6].y), color);
+	Novice::DrawLine(int(vertices[5].x), int(vertices[5].y), int(vertices[7].x), int(vertices[7].y), color);
+	Novice::DrawLine(int(vertices[6].x), int(vertices[6].y), int(vertices[7].x), int(vertices[7].y), color);
+
+	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[4].x), int(vertices[4].y), color);
+	Novice::DrawLine(int(vertices[1].x), int(vertices[1].y), int(vertices[5].x), int(vertices[5].y), color);
+	Novice::DrawLine(int(vertices[2].x), int(vertices[2].y), int(vertices[6].x), int(vertices[6].y), color);
+	Novice::DrawLine(int(vertices[3].x), int(vertices[3].y), int(vertices[7].x), int(vertices[7].y), color);
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -485,12 +474,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate{ 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate{ 0.26f, 0.0f, 0.0f };
 
-	Triangle triangle{ {
-		{ -1.0f, 0.0f, 0.0f },
-		{ 0.0f, 1.0f, 0.0f },
-		{ 1.0f, 0.0f, 0.0f },
-	} };
-	Segment segment{ { 0.0f, 0.42f, -1.0f }, { 0.0f, 0.5f, 2.0f } };
+	AABB aabb1{
+		{ -0.5f, -0.5f, -0.5f },
+		{ 0.0f, 0.0f, 0.0f },
+	};
+	AABB aabb2{
+		{ 0.2f, 0.2f, 0.2f },
+		{ 1.0f, 1.0f, 1.0f },
+	};
 
 	while (Novice::ProcessMessage() == 0) {
 
@@ -541,20 +532,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("Triangle.v0", &triangle.vertices[0].x, 0.01f);
-		ImGui::DragFloat3("Triangle.v1", &triangle.vertices[1].x, 0.01f);
-		ImGui::DragFloat3("Triangle.v2", &triangle.vertices[2].x, 0.01f);
-		ImGui::DragFloat3("Segment.Origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("Segment.Diff", &segment.diff.x, 0.01f);
+		ImGui::DragFloat3("aabb1.min", &aabb1.min.x, 0.01f);
+		ImGui::DragFloat3("aabb1.max", &aabb1.max.x, 0.01f);
+		ImGui::DragFloat3("aabb2.min", &aabb2.min.x, 0.01f);
+		ImGui::DragFloat3("aabb2.max", &aabb2.max.x, 0.01f);
 		ImGui::InputFloat3("Camera.Translate", &cameraTranslate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::InputFloat3("Camera.Rotate", &cameraRotate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
-		bool isCollision = IsCollision(triangle, segment);
+		FixAABB(aabb1);
+		FixAABB(aabb2);
+
+		bool isCollision = IsCollision(aabb1, aabb2);
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawTriangle(triangle, viewProjectionMatrix, viewportMatrix, WHITE);
-		DrawSegment(segment, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
+		DrawAABB(aabb1, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
+		DrawAABB(aabb2, viewProjectionMatrix, viewportMatrix, WHITE);
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
