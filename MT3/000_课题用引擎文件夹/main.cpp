@@ -9,6 +9,7 @@ const char kWindowTitle[] = "GC2C_02_ゴ_チュウ";
 
 const int kWindowWidth = 1280;
 const int kWindowHeight = 720;
+const float kPi = 3.14159265358979323846f;
 
 // 3次元ベクトル
 struct Vector3 {
@@ -26,6 +27,12 @@ struct Matrix4x4 {
 struct AABB {
 	Vector3 min;
 	Vector3 max;
+};
+
+// 球
+struct Sphere {
+	Vector3 center;
+	float radius;
 };
 
 // 加算
@@ -106,11 +113,29 @@ void FixAABB(AABB& aabb) {
 	aabb.max = { maxX, maxY, maxZ };
 }
 
-// AABB同士の衝突判定
-bool IsCollision(const AABB& aabb1, const AABB& aabb2) {
-	if ((aabb1.min.x <= aabb2.max.x && aabb1.max.x >= aabb2.min.x) &&
-		(aabb1.min.y <= aabb2.max.y && aabb1.max.y >= aabb2.min.y) &&
-		(aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z)) {
+// 範囲内に値を収める
+float Clamp(float value, float min, float max) {
+	if (value < min) {
+		return min;
+	}
+	if (value > max) {
+		return max;
+	}
+
+	return value;
+}
+
+// AABBと球の衝突判定
+bool IsCollision(const AABB& aabb, const Sphere& sphere) {
+	Vector3 closestPoint{
+		Clamp(sphere.center.x, aabb.min.x, aabb.max.x),
+		Clamp(sphere.center.y, aabb.min.y, aabb.max.y),
+		Clamp(sphere.center.z, aabb.min.z, aabb.max.z),
+	};
+
+	float distance = Length(Subtract(closestPoint, sphere.center));
+
+	if (distance <= sphere.radius) {
 		return true;
 	}
 
@@ -464,6 +489,44 @@ void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectionMatrix, const Mat
 	Novice::DrawLine(int(vertices[3].x), int(vertices[3].y), int(vertices[7].x), int(vertices[7].y), color);
 }
 
+// Sphereの描画
+void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	const uint32_t kSubdivision = 16;
+	const float kLonEvery = 2.0f * kPi / float(kSubdivision);
+	const float kLatEvery = kPi / float(kSubdivision);
+
+	for (uint32_t latIndex = 0; latIndex < kSubdivision; ++latIndex) {
+		float lat = -kPi / 2.0f + kLatEvery * float(latIndex);
+
+		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; ++lonIndex) {
+			float lon = kLonEvery * float(lonIndex);
+
+			Vector3 a{};
+			Vector3 b{};
+			Vector3 c{};
+
+			a.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon);
+			a.y = sphere.center.y + sphere.radius * std::sin(lat);
+			a.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon);
+
+			b.x = sphere.center.x + sphere.radius * std::cos(lat + kLatEvery) * std::cos(lon);
+			b.y = sphere.center.y + sphere.radius * std::sin(lat + kLatEvery);
+			b.z = sphere.center.z + sphere.radius * std::cos(lat + kLatEvery) * std::sin(lon);
+
+			c.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon + kLonEvery);
+			c.y = sphere.center.y + sphere.radius * std::sin(lat);
+			c.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon + kLonEvery);
+
+			a = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
+			b = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
+			c = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
+
+			Novice::DrawLine(int(a.x), int(a.y), int(b.x), int(b.y), color);
+			Novice::DrawLine(int(a.x), int(a.y), int(c.x), int(c.y), color);
+		}
+	}
+}
+
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	Novice::Initialize(kWindowTitle, kWindowWidth, kWindowHeight);
@@ -478,10 +541,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		{ -0.5f, -0.5f, -0.5f },
 		{ 0.0f, 0.0f, 0.0f },
 	};
-	AABB aabb2{
-		{ 0.2f, 0.2f, 0.2f },
-		{ 1.0f, 1.0f, 1.0f },
-	};
+	Sphere sphere{ { 1.0f, 0.74f, 1.0f }, 1.0f };
 
 	while (Novice::ProcessMessage() == 0) {
 
@@ -534,20 +594,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		ImGui::Begin("Window");
 		ImGui::DragFloat3("aabb1.min", &aabb1.min.x, 0.01f);
 		ImGui::DragFloat3("aabb1.max", &aabb1.max.x, 0.01f);
-		ImGui::DragFloat3("aabb2.min", &aabb2.min.x, 0.01f);
-		ImGui::DragFloat3("aabb2.max", &aabb2.max.x, 0.01f);
+		ImGui::DragFloat3("sphere.center", &sphere.center.x, 0.01f);
+		ImGui::DragFloat("sphere.radius", &sphere.radius, 0.01f);
 		ImGui::InputFloat3("Camera.Translate", &cameraTranslate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::InputFloat3("Camera.Rotate", &cameraRotate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
 		FixAABB(aabb1);
-		FixAABB(aabb2);
+		if (sphere.radius < 0.0f) {
+			sphere.radius = 0.0f;
+		}
 
-		bool isCollision = IsCollision(aabb1, aabb2);
+		bool isCollision = IsCollision(aabb1, sphere);
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 		DrawAABB(aabb1, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
-		DrawAABB(aabb2, viewProjectionMatrix, viewportMatrix, WHITE);
+		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
