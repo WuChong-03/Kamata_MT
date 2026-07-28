@@ -9,6 +9,7 @@ const char kWindowTitle[] = "GC2C_02_ゴ_チュウ";
 
 const int kWindowWidth = 1280;
 const int kWindowHeight = 720;
+const float kPi = 3.14159265358979323846f;
 
 // 3次元ベクトル
 struct Vector3 {
@@ -22,16 +23,10 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-// AABB
-struct AABB {
-	Vector3 min;
-	Vector3 max;
-};
-
-// 線分
-struct Segment {
-	Vector3 origin;
-	Vector3 diff;
+// 球
+struct Sphere {
+	Vector3 center;
+	float radius;
 };
 
 // 加算
@@ -99,59 +94,15 @@ Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	return result;
 }
 
-// minとmaxの入れ替わりを直す
-void FixAABB(AABB& aabb) {
-	float minX = aabb.min.x < aabb.max.x ? aabb.min.x : aabb.max.x;
-	float minY = aabb.min.y < aabb.max.y ? aabb.min.y : aabb.max.y;
-	float minZ = aabb.min.z < aabb.max.z ? aabb.min.z : aabb.max.z;
-	float maxX = aabb.min.x > aabb.max.x ? aabb.min.x : aabb.max.x;
-	float maxY = aabb.min.y > aabb.max.y ? aabb.min.y : aabb.max.y;
-	float maxZ = aabb.min.z > aabb.max.z ? aabb.min.z : aabb.max.z;
+// 線形補間
+Vector3 Lerp(const Vector3& v1, const Vector3& v2, float t) {
+	Vector3 result{};
 
-	aabb.min = { minX, minY, minZ };
-	aabb.max = { maxX, maxY, maxZ };
-}
+	result.x = v1.x + (v2.x - v1.x) * t;
+	result.y = v1.y + (v2.y - v1.y) * t;
+	result.z = v1.z + (v2.z - v1.z) * t;
 
-// AABBと線分の各軸での衝突判定
-bool IsCollisionAxis(float min, float max, float origin, float diff, float& tMin, float& tMax) {
-	const float kEpsilon = 0.000001f;
-
-	if (std::fabs(diff) < kEpsilon) {
-		return min <= origin && origin <= max;
-	}
-
-	float t1 = (min - origin) / diff;
-	float t2 = (max - origin) / diff;
-
-	float tNear = t1 < t2 ? t1 : t2;
-	float tFar = t1 > t2 ? t1 : t2;
-
-	if (tNear > tMin) {
-		tMin = tNear;
-	}
-	if (tFar < tMax) {
-		tMax = tFar;
-	}
-
-	return tMin <= tMax;
-}
-
-// AABBと線分の衝突判定
-bool IsCollision(const AABB& aabb, const Segment& segment) {
-	float tMin = 0.0f;
-	float tMax = 1.0f;
-
-	if (!IsCollisionAxis(aabb.min.x, aabb.max.x, segment.origin.x, segment.diff.x, tMin, tMax)) {
-		return false;
-	}
-	if (!IsCollisionAxis(aabb.min.y, aabb.max.y, segment.origin.y, segment.diff.y, tMin, tMax)) {
-		return false;
-	}
-	if (!IsCollisionAxis(aabb.min.z, aabb.max.z, segment.origin.z, segment.diff.z, tMin, tMax)) {
-		return false;
-	}
-
-	return true;
+	return result;
 }
 
 // 行列の積
@@ -468,45 +419,70 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
-// AABBの描画
-void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 vertices[8]{
-		{ aabb.min.x, aabb.min.y, aabb.min.z },
-		{ aabb.max.x, aabb.min.y, aabb.min.z },
-		{ aabb.min.x, aabb.max.y, aabb.min.z },
-		{ aabb.max.x, aabb.max.y, aabb.min.z },
-		{ aabb.min.x, aabb.min.y, aabb.max.z },
-		{ aabb.max.x, aabb.min.y, aabb.max.z },
-		{ aabb.min.x, aabb.max.y, aabb.max.z },
-		{ aabb.max.x, aabb.max.y, aabb.max.z },
-	};
+// Sphereの描画
+void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	const uint32_t kSubdivision = 8;
+	const float kLonEvery = 2.0f * kPi / float(kSubdivision);
+	const float kLatEvery = kPi / float(kSubdivision);
 
-	for (int32_t index = 0; index < 8; ++index) {
-		vertices[index] = Transform(Transform(vertices[index], viewProjectionMatrix), viewportMatrix);
+	for (uint32_t latIndex = 0; latIndex < kSubdivision; ++latIndex) {
+		float lat = -kPi / 2.0f + kLatEvery * float(latIndex);
+
+		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; ++lonIndex) {
+			float lon = kLonEvery * float(lonIndex);
+
+			Vector3 a{};
+			Vector3 b{};
+			Vector3 c{};
+
+			a.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon);
+			a.y = sphere.center.y + sphere.radius * std::sin(lat);
+			a.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon);
+
+			b.x = sphere.center.x + sphere.radius * std::cos(lat + kLatEvery) * std::cos(lon);
+			b.y = sphere.center.y + sphere.radius * std::sin(lat + kLatEvery);
+			b.z = sphere.center.z + sphere.radius * std::cos(lat + kLatEvery) * std::sin(lon);
+
+			c.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon + kLonEvery);
+			c.y = sphere.center.y + sphere.radius * std::sin(lat);
+			c.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon + kLonEvery);
+
+			a = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
+			b = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
+			c = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
+
+			Novice::DrawLine(int(a.x), int(a.y), int(b.x), int(b.y), color);
+			Novice::DrawLine(int(a.x), int(a.y), int(c.x), int(c.y), color);
+		}
 	}
-
-	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[1].x), int(vertices[1].y), color);
-	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[2].x), int(vertices[2].y), color);
-	Novice::DrawLine(int(vertices[1].x), int(vertices[1].y), int(vertices[3].x), int(vertices[3].y), color);
-	Novice::DrawLine(int(vertices[2].x), int(vertices[2].y), int(vertices[3].x), int(vertices[3].y), color);
-
-	Novice::DrawLine(int(vertices[4].x), int(vertices[4].y), int(vertices[5].x), int(vertices[5].y), color);
-	Novice::DrawLine(int(vertices[4].x), int(vertices[4].y), int(vertices[6].x), int(vertices[6].y), color);
-	Novice::DrawLine(int(vertices[5].x), int(vertices[5].y), int(vertices[7].x), int(vertices[7].y), color);
-	Novice::DrawLine(int(vertices[6].x), int(vertices[6].y), int(vertices[7].x), int(vertices[7].y), color);
-
-	Novice::DrawLine(int(vertices[0].x), int(vertices[0].y), int(vertices[4].x), int(vertices[4].y), color);
-	Novice::DrawLine(int(vertices[1].x), int(vertices[1].y), int(vertices[5].x), int(vertices[5].y), color);
-	Novice::DrawLine(int(vertices[2].x), int(vertices[2].y), int(vertices[6].x), int(vertices[6].y), color);
-	Novice::DrawLine(int(vertices[3].x), int(vertices[3].y), int(vertices[7].x), int(vertices[7].y), color);
 }
 
-// 線分の描画
-void DrawSegment(const Segment& segment, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
-	Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
+// 2次ベジェ曲線の描画
+void DrawBezier(
+	const Vector3& controlPoint0,
+	const Vector3& controlPoint1,
+	const Vector3& controlPoint2,
+	const Matrix4x4& viewProjectionMatrix,
+	const Matrix4x4& viewportMatrix,
+	uint32_t color) {
 
-	Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), color);
+	const uint32_t kSubdivision = 32;
+	Vector3 previous = controlPoint0;
+
+	for (uint32_t index = 1; index <= kSubdivision; ++index) {
+		float t = float(index) / float(kSubdivision);
+
+		Vector3 p0p1 = Lerp(controlPoint0, controlPoint1, t);
+		Vector3 p1p2 = Lerp(controlPoint1, controlPoint2, t);
+		Vector3 point = Lerp(p0p1, p1p2, t);
+
+		Vector3 screenPrevious = Transform(Transform(previous, viewProjectionMatrix), viewportMatrix);
+		Vector3 screenPoint = Transform(Transform(point, viewProjectionMatrix), viewportMatrix);
+
+		Novice::DrawLine(int(screenPrevious.x), int(screenPrevious.y), int(screenPoint.x), int(screenPoint.y), color);
+
+		previous = point;
+	}
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -519,13 +495,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate{ 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate{ 0.26f, 0.0f, 0.0f };
 
-	AABB aabb{
-		{ -0.5f, -0.5f, -0.5f },
-		{ 0.5f, 0.5f, 0.5f },
-	};
-	Segment segment{
-		{ -0.7f, 0.3f, 0.0f },
-		{ 2.0f, -0.5f, 0.0f },
+	Vector3 controlPoints[3]{
+		{ -0.8f, 0.58f, 1.0f },
+		{ 1.76f, 1.0f, -0.3f },
+		{ 0.94f, -0.7f, 2.3f },
 	};
 
 	while (Novice::ProcessMessage() == 0) {
@@ -577,21 +550,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("aabb.min", &aabb.min.x, 0.01f);
-		ImGui::DragFloat3("aabb.max", &aabb.max.x, 0.01f);
-		ImGui::DragFloat3("Segment.Origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("Segment.Diff", &segment.diff.x, 0.01f);
+		ImGui::DragFloat3("controlPoints[0]", &controlPoints[0].x, 0.01f);
+		ImGui::DragFloat3("controlPoints[1]", &controlPoints[1].x, 0.01f);
+		ImGui::DragFloat3("controlPoints[2]", &controlPoints[2].x, 0.01f);
 		ImGui::InputFloat3("Camera.Translate", &cameraTranslate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::InputFloat3("Camera.Rotate", &cameraRotate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
-		FixAABB(aabb);
-
-		bool isCollision = IsCollision(aabb, segment);
-
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawAABB(aabb, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
-		DrawSegment(segment, viewProjectionMatrix, viewportMatrix, isCollision ? RED : WHITE);
+		DrawBezier(controlPoints[0], controlPoints[1], controlPoints[2], viewProjectionMatrix, viewportMatrix, BLUE);
+
+		for (int32_t index = 0; index < 3; ++index) {
+			Sphere controlPointSphere{ controlPoints[index], 0.01f };
+			DrawSphere(controlPointSphere, viewProjectionMatrix, viewportMatrix, BLACK);
+		}
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
