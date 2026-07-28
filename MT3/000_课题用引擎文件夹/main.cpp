@@ -94,17 +94,6 @@ Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	return result;
 }
 
-// 線形補間
-Vector3 Lerp(const Vector3& v1, const Vector3& v2, float t) {
-	Vector3 result{};
-
-	result.x = v1.x + (v2.x - v1.x) * t;
-	result.y = v1.y + (v2.y - v1.y) * t;
-	result.z = v1.z + (v2.z - v1.z) * t;
-
-	return result;
-}
-
 // 行列の積
 Matrix4x4 Multiply(const Matrix4x4& matrix1, const Matrix4x4& matrix2) {
 	Matrix4x4 result{};
@@ -457,32 +446,23 @@ void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, con
 	}
 }
 
-// 2次ベジェ曲線の描画
-void DrawBezier(
-	const Vector3& controlPoint0,
-	const Vector3& controlPoint1,
-	const Vector3& controlPoint2,
+// 行列の平行移動成分を取り出す
+Vector3 GetTranslate(const Matrix4x4& matrix) {
+	return { matrix.m[3][0], matrix.m[3][1], matrix.m[3][2] };
+}
+
+// 3Dの線分を描画
+void DrawLine3D(
+	const Vector3& start,
+	const Vector3& end,
 	const Matrix4x4& viewProjectionMatrix,
 	const Matrix4x4& viewportMatrix,
 	uint32_t color) {
 
-	const uint32_t kSubdivision = 32;
-	Vector3 previous = controlPoint0;
+	Vector3 screenStart = Transform(Transform(start, viewProjectionMatrix), viewportMatrix);
+	Vector3 screenEnd = Transform(Transform(end, viewProjectionMatrix), viewportMatrix);
 
-	for (uint32_t index = 1; index <= kSubdivision; ++index) {
-		float t = float(index) / float(kSubdivision);
-
-		Vector3 p0p1 = Lerp(controlPoint0, controlPoint1, t);
-		Vector3 p1p2 = Lerp(controlPoint1, controlPoint2, t);
-		Vector3 point = Lerp(p0p1, p1p2, t);
-
-		Vector3 screenPrevious = Transform(Transform(previous, viewProjectionMatrix), viewportMatrix);
-		Vector3 screenPoint = Transform(Transform(point, viewProjectionMatrix), viewportMatrix);
-
-		Novice::DrawLine(int(screenPrevious.x), int(screenPrevious.y), int(screenPoint.x), int(screenPoint.y), color);
-
-		previous = point;
-	}
+	Novice::DrawLine(int(screenStart.x), int(screenStart.y), int(screenEnd.x), int(screenEnd.y), color);
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -495,10 +475,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate{ 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate{ 0.26f, 0.0f, 0.0f };
 
-	Vector3 controlPoints[3]{
-		{ -0.8f, 0.58f, 1.0f },
-		{ 1.76f, 1.0f, -0.3f },
-		{ 0.94f, -0.7f, 2.3f },
+	Vector3 translates[3] = {
+		{ 0.2f, 1.0f, 0.0f },
+		{ 0.4f, 0.0f, 0.0f },
+		{ 0.3f, 0.0f, 0.0f },
+	};
+	Vector3 rotates[3] = {
+		{ 0.0f, 0.0f, -6.8f },
+		{ 0.0f, 0.0f, -1.4f },
+		{ 0.0f, 0.0f, 0.0f },
+	};
+	Vector3 scales[3] = {
+		{ 1.0f, 1.0f, 1.0f },
+		{ 1.0f, 1.0f, 1.0f },
+		{ 1.0f, 1.0f, 1.0f },
 	};
 
 	while (Novice::ProcessMessage() == 0) {
@@ -550,20 +540,45 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("controlPoints[0]", &controlPoints[0].x, 0.01f);
-		ImGui::DragFloat3("controlPoints[1]", &controlPoints[1].x, 0.01f);
-		ImGui::DragFloat3("controlPoints[2]", &controlPoints[2].x, 0.01f);
+		ImGui::DragFloat3("translates[0]", &translates[0].x, 0.01f);
+		ImGui::DragFloat3("rotates[0]", &rotates[0].x, 0.01f);
+		ImGui::DragFloat3("scales[0]", &scales[0].x, 0.01f);
+		ImGui::DragFloat3("translates[1]", &translates[1].x, 0.01f);
+		ImGui::DragFloat3("rotates[1]", &rotates[1].x, 0.01f);
+		ImGui::DragFloat3("scales[1]", &scales[1].x, 0.01f);
+		ImGui::DragFloat3("translates[2]", &translates[2].x, 0.01f);
+		ImGui::DragFloat3("rotates[2]", &rotates[2].x, 0.01f);
+		ImGui::DragFloat3("scales[2]", &scales[2].x, 0.01f);
 		ImGui::InputFloat3("Camera.Translate", &cameraTranslate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::InputFloat3("Camera.Rotate", &cameraRotate.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
-		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawBezier(controlPoints[0], controlPoints[1], controlPoints[2], viewProjectionMatrix, viewportMatrix, BLUE);
-
+		Matrix4x4 localMatrices[3]{};
+		Matrix4x4 worldMatrices[3]{};
 		for (int32_t index = 0; index < 3; ++index) {
-			Sphere controlPointSphere{ controlPoints[index], 0.01f };
-			DrawSphere(controlPointSphere, viewProjectionMatrix, viewportMatrix, BLACK);
+			localMatrices[index] = MakeAffineMatrix(scales[index], rotates[index], translates[index]);
 		}
+
+		worldMatrices[0] = localMatrices[0];
+		worldMatrices[1] = Multiply(localMatrices[1], worldMatrices[0]);
+		worldMatrices[2] = Multiply(localMatrices[2], worldMatrices[1]);
+
+		Vector3 jointPositions[3] = {
+			GetTranslate(worldMatrices[0]),
+			GetTranslate(worldMatrices[1]),
+			GetTranslate(worldMatrices[2]),
+		};
+
+		DrawGrid(viewProjectionMatrix, viewportMatrix);
+		DrawLine3D(jointPositions[0], jointPositions[1], viewProjectionMatrix, viewportMatrix, WHITE);
+		DrawLine3D(jointPositions[1], jointPositions[2], viewProjectionMatrix, viewportMatrix, WHITE);
+
+		Sphere shoulder{ jointPositions[0], 0.05f };
+		Sphere elbow{ jointPositions[1], 0.05f };
+		Sphere hand{ jointPositions[2], 0.05f };
+		DrawSphere(shoulder, viewProjectionMatrix, viewportMatrix, RED);
+		DrawSphere(elbow, viewProjectionMatrix, viewportMatrix, GREEN);
+		DrawSphere(hand, viewProjectionMatrix, viewportMatrix, BLUE);
 
 		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
 			break;
